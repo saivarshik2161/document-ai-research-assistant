@@ -1,0 +1,27 @@
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment secrets
+.env
+*.env.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# User data and indices (preserve folder structure via .gitkeep)
+data/uploads/*
+!data/uploads/.gitkeep
+data/indices/*
+!data/indices/.gitkeep
+data/history/*
+!data/history/.gitkeep
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

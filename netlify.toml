@@ -1,0 +1,40 @@
+﻿[build]
+  publish = "public"
+  command = "mkdir -p public && cp templates/index.html public/index.html && cp -r static public/static"
+
+# Proxies for when backend is deployed to Render/Railway
+# Replace https://your-backend.onrender.com with your actual backend URL:
+[[redirects]]
+  from = "/ask"
+  to = "https://your-backend.onrender.com/ask"
+  status = 200
+
+[[redirects]]
+  from = "/upload"
+  to = "https://your-backend.onrender.com/upload"
+  status = 200
+
+[[redirects]]
+  from = "/sources"
+  to = "https://your-backend.onrender.com/sources"
+  status = 200
+
+[[redirects]]
+  from = "/sources/*"
+  to = "https://your-backend.onrender.com/sources/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/history"
+  to = "https://your-backend.onrender.com/history"
+  status = 200
+
+[[redirects]]
+  from = "/history/*"
+  to = "https://your-backend.onrender.com/history/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/clear"
+  to = "https://your-backend.onrender.com/clear"
+  status = 200

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Production AI Document Assistant with verified source citations and multi-document reasoning." />
+  <title>Document AI — Research Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css" />
+
+  <!-- KaTeX for Exact Mathematical Formulas (no distorted math) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+  <!-- Marked.js for Exact GFM Tables & Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.1/marked.min.js"></script>
+
+  <!-- Chart.js for Exact, Clean Vector Graphs & Plots -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <div class="app-root">
+    <!-- Toast notification container -->
+    <div id="toastContainer" class="toast-container" role="alert" aria-live="polite"></div>
+
+    <!-- Header Navigation -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">Document AI</h1>
+          <p class="brand-sub">RAG Research Assistant &bull; Multi-Document Reasoning &bull; Source Citations</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button type="button" class="btn btn--ghost" id="newChatBtn" title="Start a fresh chat conversation">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>New Chat</span>
+        </button>
+        <button type="button" class="btn btn--ghost" id="historyBtn" title="View and load saved chat history">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>Chat History</span>
+          <span id="historyCountBadge" class="counter-badge">0</span>
+        </button>
+        <button type="button" class="btn btn--ghost" id="clearAllBtn" title="Reset and clear all uploaded documents">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <span>Clear Workspace</span>
+        </button>
+        <button type="button" class="btn btn--ghost" id="apiConfigBtn" title="Configure Backend Server URL (for Netlify deployment)">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span id="apiConfigLabel">Backend</span>
+        </button>
+        <button type="button" class="theme-toggle btn-icon" id="themeToggleBtn" title="Toggle Dark/Light theme" aria-label="Toggle theme">
+          <span class="theme-icon">🌓</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace: 2-Column Research Layout -->
+    <main class="workspace-main">
+
+      <!-- ===================================================================
+           LEFT COLUMN: SOURCES & UPLOAD
+           =================================================================== -->
+      <aside class="panel-sources">
+        <div class="panel-head">
+          <div class="head-title-group">
+            <h2 class="panel-title">Documents</h2>
+            <span id="sourcesCountPill" class="counter-badge">0</span>
+          </div>
+          <button type="button" class="btn btn--primary btn--sm" id="triggerUploadBtn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Upload Document</span>
+          </button>
+        </div>
+
+        <!-- Workspace Aggregate Stats: Pages & Chunks -->
+        <div class="workspace-stats-strip" id="workspaceStatsStrip">
+          <div class="stat-box"><span class="stat-num" id="statDocs">0</span><span class="stat-label">Docs</span></div>
+          <div class="stat-box"><span class="stat-num" id="statPages">0</span><span class="stat-label">Pages</span></div>
+          <div class="stat-box"><span class="stat-num" id="statChunks">0</span><span class="stat-label">Chunks</span></div>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div class="dropzone" id="dropzone" role="button" tabindex="0">
+          <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt,.md,.markdown,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" multiple class="visually-hidden" />
+          <div class="dropzone-icon">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          </div>
+          <p class="dropzone-lead">Drag & drop documents here</p>
+          <p class="dropzone-sub">PDF, Word (.docx), Text (.txt), Markdown (.md), CSV</p>
+        </div>
+
+        <!-- Ingestion Progress Bar -->
+        <div id="uploadStatus" class="upload-status-box is-hidden">
+          <div class="status-text-row">
+            <span id="uploadStatusText">Extracting text & building FAISS index...</span>
+            <span class="spinner-small"></span>
+          </div>
+          <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+        </div>
+
+        <!-- Uploaded Documents List -->
+        <div class="sources-list" id="sourcesList">
+          <!-- Rendered by JS -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="sourcesEmptyState" class="pane-empty">
+          <p class="empty-main">No documents uploaded</p>
+          <p class="empty-sub">Upload PDF, Word DOCX, TXT, or MD documents to begin research with source grounding.</p>
+        </div>
+      </aside>
+
+      <!-- ===================================================================
+           RIGHT COLUMN: AI RESEARCH CHAT
+           =================================================================== -->
+      <section class="panel-chat">
+
+        <!-- Chat Messages Thread -->
+        <div class="chat-thread" id="chatThread">
+          <!-- Welcome Greeting when Thread is Empty -->
+          <div id="chatWelcome" class="chat-welcome">
+            <div class="welcome-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            </div>
+            <h2 class="welcome-title">Ask your documents</h2>
+            <p class="welcome-sub">Grounded answers with page citations, multi-document comparison, and full source verification.</p>
+
+            <div class="suggestions-grid">
+              <button type="button" class="suggestion-chip" data-prompt="Explain what is the main topic and key findings of the document.">
+                <span class="chip-icon">📄</span>
+                <span>Explain main topic & key findings</span>
+              </button>
+              <button type="button" class="suggestion-chip" data-prompt="Provide a comprehensive summary with critical takeaways and methodologies.">
+                <span class="chip-icon">💡</span>
+                <span>Summarize critical takeaways & methods</span>
+              </button>
+              <button type="button" class="suggestion-chip" data-prompt="Compare the main arguments, data points, and conclusions across documents.">
+                <span class="chip-icon">⚖️</span>
+                <span>Compare arguments & data across documents</span>
+              </button>
+              <button type="button" class="suggestion-chip" data-prompt="What evidence and technical specifications are presented in the text?">
+                <span class="chip-icon">🔍</span>
+                <span>Inspect technical evidence & specifications</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Messages Container -->
+          <div id="messagesContainer" class="messages-container">
+            <!-- Messages rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Composer Area -->
+        <div class="composer-container">
+          <div class="composer-box">
+            <textarea id="composerInput" class="composer-textarea" rows="1" placeholder="Ask a question about your uploaded documents... (Enter to send, Shift+Enter for new line)"></textarea>
+            <button type="button" id="sendMessageBtn" class="composer-send-btn" disabled title="Send question">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+          <p class="composer-caption">Answers are generated from your uploaded documents only. Click citations to view exact source pages.</p>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ===================================================================
+         MODAL 1: CITATION INSPECTOR
+         =================================================================== -->
+    <div id="citationModal" class="modal-overlay is-hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div class="citation-head">
+            <span class="citation-tag">Source Citation</span>
+            <h3 id="citationDocName" class="citation-title">document.pdf</h3>
+          </div>
+          <button type="button" class="btn-icon" data-close="citationModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="citation-meta-row">
+            <span class="badge badge--soft" id="citationPageBadge">Page 1</span>
+            <span class="citation-label">Evidence passage from document:</span>
+          </div>
+          <blockquote id="citationExcerptText" class="citation-excerpt">
+            "Passage excerpt..."
+          </blockquote>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn--secondary" data-close="citationModal">Close</button>
+          <button type="button" class="btn btn--primary" id="openDocumentPageBtn">View Full Page</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================
+         MODAL 2: DOCUMENT VIEWER
+         =================================================================== -->
+    <div id="docViewerModal" class="modal-overlay is-hidden">
+      <div class="modal-dialog modal-dialog--viewer">
+        <div class="modal-header">
+          <div class="viewer-head">
+            <h3 id="viewerDocTitle">document.pdf</h3>
+            <span id="viewerPageStats" class="counter-badge">1 Page</span>
+          </div>
+          <div class="viewer-actions">
+            <a id="viewerDownloadLink" href="#" target="_blank" class="btn btn--secondary btn--sm">Download PDF</a>
+            <button type="button" class="btn-icon" data-close="docViewerModal">✕</button>
+          </div>
+        </div>
+        <div class="viewer-toolbar">
+          <button type="button" class="btn-icon" id="viewerPrevBtn">◀</button>
+          <span>Page <strong id="viewerCurPage">1</strong> of <span id="viewerTotalPages">1</span></span>
+          <button type="button" class="btn-icon" id="viewerNextBtn">▶</button>
+        </div>
+        <div class="modal-body viewer-body">
+          <pre id="viewerPageText" class="viewer-text"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================
+         MODAL 3: CHAT HISTORY MANAGER
+         =================================================================== -->
+    <div id="historyModal" class="modal-overlay is-hidden">
+      <div class="modal-dialog modal-dialog--history">
+        <div class="modal-header">
+          <div class="history-head">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <h3>Chat History</h3>
+          </div>
+          <button type="button" class="btn-icon" data-close="historyModal">✕</button>
+        </div>
+        <div class="modal-body history-body">
+          <div class="history-actions-bar">
+            <button type="button" class="btn btn--primary btn--sm" id="saveCurrentChatBtn">💾 Save Current Session</button>
+            <button type="button" class="btn btn--ghost btn--sm" id="exportChatBtn">📥 Export JSON</button>
+            <button type="button" class="btn btn--ghost btn--sm" id="exportMdBtn">📄 Export Markdown</button>
+          </div>
+          <div id="historyList" class="history-list">
+            <!-- Rendered by JS -->
+          </div>
+          <div id="historyEmptyState" class="pane-empty is-hidden">
+            <p class="empty-main">No saved conversations</p>
+            <p class="empty-sub">Your current and past chat conversations will appear here.</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn--secondary" data-close="historyModal">Close</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/script.js" defer></script>
+</body>
+</html>
