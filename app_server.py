@@ -2,11 +2,13 @@ from collections import defaultdict
 from datetime import datetime
 import json
 import os
+import re
 import shutil
+from typing import Any, Dict, List, Optional
 import uuid
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request, send_from_directory, session
 from werkzeug.utils import secure_filename
 
 load_dotenv()
@@ -22,6 +24,7 @@ from rag_engine import (
 
 app = Flask(__name__)
 application = app  # WSGI alias
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "doc-ai-research-assistant-session-secret-2026")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB upload limit
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "uploads")
@@ -29,26 +32,6 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 HISTORY_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "history")
 os.makedirs(HISTORY_FOLDER, exist_ok=True)
-SESSIONS_FILE = os.path.join(HISTORY_FOLDER, "sessions.json")
-
-
-def load_saved_sessions():
-    if not os.path.exists(SESSIONS_FILE):
-        return []
-    try:
-        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-
-def save_saved_sessions(sessions):
-    try:
-        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
-            json.dump(sessions, f, indent=2, ensure_ascii=False)
-    except Exception as err:
-        app.logger.error(f"Error saving chat sessions: {err}")
-
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".markdown", ".csv", ".tsv", ".json"}
 
@@ -58,58 +41,123 @@ def is_allowed_file(filename: str) -> bool:
     return ext in ALLOWED_EXTENSIONS
 
 
-# In-memory document and RAG state
-current_documents = []
-current_chunks = []
-current_vector_store = None
-current_metadata = []
-conversation_history = []
+# --- Multi-Tenant Session Workspace Architecture ---
 
+class UserWorkspace:
+    """Isolated document storage, vector index, and chat session per client device."""
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+        self.documents = []
+        self.chunks = []
+        self.vector_store = None
+        self.metadata = []
+        self.conversation_history = []
+        self.upload_dir = os.path.join(UPLOAD_FOLDER, session_id)
+        os.makedirs(self.upload_dir, exist_ok=True)
+        self.history_dir = os.path.join(HISTORY_FOLDER, session_id)
+        os.makedirs(self.history_dir, exist_ok=True)
+        self.sessions_file = os.path.join(self.history_dir, "sessions.json")
+        self.init_from_disk()
 
-def init_workspace_from_disk():
-    """Auto-load any existing documents in the uploads folder on server start."""
-    global current_documents, current_chunks, current_vector_store, current_metadata
-    if not os.path.exists(UPLOAD_FOLDER):
-        return
+    def init_from_disk(self):
+        """Auto-load any existing documents in this user's private upload folder."""
+        if not os.path.exists(self.upload_dir):
+            return
 
-    doc_files = [
-        f for f in os.listdir(UPLOAD_FOLDER)
-        if is_allowed_file(f) and os.path.isfile(os.path.join(UPLOAD_FOLDER, f))
-    ]
-    if not doc_files:
-        return
+        doc_files = [
+            f for f in os.listdir(self.upload_dir)
+            if is_allowed_file(f) and os.path.isfile(os.path.join(self.upload_dir, f))
+        ]
+        if not doc_files:
+            return
 
-    docs = []
-    meta = []
-    for fname in doc_files:
-        fpath = os.path.join(UPLOAD_FOLDER, fname)
+        docs = []
+        meta = []
+        for fname in doc_files:
+            fpath = os.path.join(self.upload_dir, fname)
+            try:
+                extracted = load_pdf_from_path(fpath, fname)
+                for d in extracted:
+                    d.metadata["source"] = fname
+                    d.metadata["file_path"] = fpath
+                    docs.append(d)
+                meta.append({
+                    "filename": fname,
+                    "file_size": os.path.getsize(fpath),
+                    "pages": len(extracted),
+                })
+            except Exception as err:
+                app.logger.warning(f"Could not preload {fname} for {self.session_id}: {err}")
+
+        if docs:
+            try:
+                chunks = split_documents(docs)
+                if chunks:
+                    self.vector_store = build_vector_store(chunks)
+                    self.documents = docs
+                    self.chunks = chunks
+                    self.metadata = meta
+            except Exception as err:
+                app.logger.warning(f"Could not build vector store on init for {self.session_id}: {err}")
+
+    def load_saved_sessions(self) -> List[Dict[str, Any]]:
+        if not os.path.exists(self.sessions_file):
+            return []
         try:
-            extracted = load_pdf_from_path(fpath, fname)
-            for d in extracted:
-                d.metadata["source"] = fname
-                d.metadata["file_path"] = fpath
-                docs.append(d)
-            meta.append({
-                "filename": fname,
-                "file_size": os.path.getsize(fpath),
-                "pages": len(extracted),
-            })
-        except Exception as err:
-            app.logger.warning(f"Could not preload {fname}: {err}")
+            with open(self.sessions_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
 
-    if docs:
+    def save_saved_sessions(self, sessions_list: List[Dict[str, Any]]) -> None:
         try:
-            chunks = split_documents(docs)
-            if chunks:
-                current_vector_store = build_vector_store(chunks)
-                current_documents = docs
-                current_chunks = chunks
-                current_metadata = meta
-                print(f"[INIT] Preloaded {len(meta)} document(s) with {len(chunks)} chunks into vector store.")
+            with open(self.sessions_file, "w", encoding="utf-8") as f:
+                json.dump(sessions_list, f, indent=2, ensure_ascii=False)
         except Exception as err:
-            app.logger.warning(f"Could not build vector store on init: {err}")
+            app.logger.error(f"Error saving chat sessions for {self.session_id}: {err}")
+
+    def clear(self):
+        self.documents = []
+        self.chunks = []
+        self.vector_store = None
+        self.metadata = []
+        self.conversation_history = []
+        if os.path.exists(self.upload_dir):
+            shutil.rmtree(self.upload_dir, ignore_errors=True)
+            os.makedirs(self.upload_dir, exist_ok=True)
+        if os.path.exists(self.sessions_file):
+            try:
+                os.remove(self.sessions_file)
+            except Exception:
+                pass
 
 
+user_workspaces: Dict[str, UserWorkspace] = {}
+
+
+def get_workspace() -> UserWorkspace:
+    """Resolve the isolated workspace for the requesting browser / client."""
+    # 1. Custom HTTP header (sent by frontend script)
+    sid = request.headers.get("X-Session-ID") or request.headers.get("X-User-ID")
+    if not sid:
+        # 2. Query param (?session_id=...)
+        sid = request.args.get("session_id")
+    if not sid:
+        # 3. Signed cookie
+        sid = session.get("user_id")
+    if not sid:
+        # 4. Generate new
+        sid = "usr_" + uuid.uuid4().hex[:12]
+        session["user_id"] = sid
+
+    # Sanitize session ID to alphanumeric/hyphen/underscore (safe for filesystem path)
+    clean_sid = re.sub(r'[^a-zA-Z0-9_\-]', '', str(sid))[:64] or "default"
+    if clean_sid not in user_workspaces:
+        user_workspaces[clean_sid] = UserWorkspace(clean_sid)
+    return user_workspaces[clean_sid]
+
+
+# --- CORS & Security Headers ---
 
 @app.before_request
 def handle_preflight():
@@ -117,7 +165,7 @@ def handle_preflight():
         response = app.make_default_options_response()
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, X-Session-ID, X-User-ID"
         return response
 
 
@@ -126,19 +174,23 @@ def set_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, X-Session-ID, X-User-ID"
     return response
 
 
+# --- Application Endpoints ---
+
 @app.get("/")
 def home():
+    # Pre-seed session ID in cookie if not set
+    if "user_id" not in session:
+        session["user_id"] = "usr_" + uuid.uuid4().hex[:12]
     return render_template("index.html")
 
 
 @app.post("/upload")
 def upload_documents():
-    global current_documents, current_chunks, current_vector_store, current_metadata, conversation_history
-
+    ws = get_workspace()
     uploaded_files = request.files.getlist("files")
     if not uploaded_files:
         return jsonify({"success": False, "error": "Please select at least one document file."}), 400
@@ -156,13 +208,12 @@ def upload_documents():
         }), 400
 
     try:
-        # Save files to disk and extract text
         new_docs = []
         new_meta = []
 
         for f in valid_files:
             safe_name = secure_filename(f.filename)
-            saved_path = os.path.join(UPLOAD_FOLDER, safe_name)
+            saved_path = os.path.join(ws.upload_dir, safe_name)
             f.seek(0)
             f.save(saved_path)
 
@@ -187,32 +238,29 @@ def upload_documents():
                 "error": "No readable text found in the uploaded document(s). Please verify file contents.",
             }), 400
 
-        # Combine with any existing documents
-        all_docs = current_documents + new_docs
+        all_docs = ws.documents + new_docs
         chunks = split_documents(all_docs)
 
         if not chunks:
             return jsonify({"success": False, "error": "Could not create text chunks."}), 400
 
-        # Build FAISS vector store
         vector_store = build_vector_store(chunks)
 
-        current_documents = all_docs
-        current_chunks = chunks
-        current_vector_store = vector_store
-        current_metadata = current_metadata + new_meta
+        ws.documents = all_docs
+        ws.chunks = chunks
+        ws.vector_store = vector_store
+        ws.metadata = ws.metadata + new_meta
 
-        # Calculate pages and chunks per file
         page_counts = defaultdict(int)
         chunk_counts = defaultdict(int)
-        for d in current_documents:
+        for d in ws.documents:
             page_counts[d.metadata.get("source")] += 1
-        for c in current_chunks:
+        for c in ws.chunks:
             chunk_counts[c.metadata.get("source")] += 1
 
         docs_summary = []
         seen = set()
-        for m in current_metadata:
+        for m in ws.metadata:
             fname = m["filename"]
             if fname not in seen:
                 seen.add(fname)
@@ -239,22 +287,23 @@ def upload_documents():
         })
 
     except Exception as error:
-        app.logger.exception("Upload failed.")
+        app.logger.exception(f"Upload failed for session {ws.session_id}.")
         return jsonify({"success": False, "error": f"Failed to process document: {error}"}), 500
 
 
 @app.get("/sources")
 def get_sources():
+    ws = get_workspace()
     page_counts = defaultdict(int)
     chunk_counts = defaultdict(int)
-    for d in current_documents:
+    for d in ws.documents:
         page_counts[d.metadata.get("source")] += 1
-    for c in current_chunks:
+    for c in ws.chunks:
         chunk_counts[c.metadata.get("source")] += 1
 
     docs_summary = []
     seen = set()
-    for m in current_metadata:
+    for m in ws.metadata:
         fname = m["filename"]
         if fname not in seen:
             seen.add(fname)
@@ -283,8 +332,9 @@ def get_sources():
 @app.get("/sources/<filename>")
 def inspect_source(filename):
     """Retrieve extracted page text for in-app reading."""
+    ws = get_workspace()
     pages = {}
-    for d in current_documents:
+    for d in ws.documents:
         if d.metadata.get("source") == filename:
             p_num = d.metadata.get("page", 1)
             pages.setdefault(p_num, []).append(d.page_content)
@@ -298,59 +348,56 @@ def inspect_source(filename):
 
 @app.get("/sources/<filename>/download")
 def download_source(filename):
+    ws = get_workspace()
     safe_name = secure_filename(filename)
-    return send_from_directory(UPLOAD_FOLDER, safe_name, as_attachment=False)
+    return send_from_directory(ws.upload_dir, safe_name, as_attachment=False)
 
 
 @app.delete("/sources/<filename>")
 def delete_source(filename):
-    global current_documents, current_chunks, current_vector_store, current_metadata
-
+    ws = get_workspace()
     safe_name = secure_filename(filename)
-    current_documents = [d for d in current_documents if d.metadata.get("source") != safe_name]
-    current_metadata = [m for m in current_metadata if m["filename"] != safe_name]
+    ws.documents = [d for d in ws.documents if d.metadata.get("source") != safe_name]
+    ws.metadata = [m for m in ws.metadata if m["filename"] != safe_name]
 
-    file_path = os.path.join(UPLOAD_FOLDER, safe_name)
+    file_path = os.path.join(ws.upload_dir, safe_name)
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
         except Exception:
             pass
 
-    if current_documents:
-        current_chunks = split_documents(current_documents)
-        current_vector_store = build_vector_store(current_chunks)
+    if ws.documents:
+        ws.chunks = split_documents(ws.documents)
+        ws.vector_store = build_vector_store(ws.chunks)
     else:
-        current_chunks = []
-        current_vector_store = None
+        ws.chunks = []
+        ws.vector_store = None
 
     return jsonify({"success": True, "message": f"Removed '{filename}'."})
 
 
 @app.post("/ask")
 def ask():
-    global conversation_history
-
+    ws = get_workspace()
     data = request.get_json(silent=True) or {}
     question = (data.get("question") or "").strip()
 
     if not question:
         return jsonify({"success": False, "error": "Please enter a question."}), 400
 
-    if current_vector_store is None and not current_documents:
-        # Check if question is an outside inquiry or general knowledge
-        app.logger.info("No documents uploaded; proceeding with external web retrieval and general knowledge.")
-
     try:
         answer, sources, external_sources = answer_question(
-            vector_store=current_vector_store,
+            vector_store=ws.vector_store,
             question=question,
-            conversation_history=conversation_history,
+            conversation_history=ws.conversation_history,
             number_of_chunks=8,
         )
 
-        conversation_history.append({"role": "user", "content": question})
-        conversation_history.append({"role": "assistant", "content": answer})
+        ws.conversation_history.append({"role": "user", "content": question})
+        ws.conversation_history.append({"role": "assistant", "content": answer})
+        if len(ws.conversation_history) > 20:
+            ws.conversation_history = ws.conversation_history[-20:]
 
         return jsonify({
             "success": True,
@@ -360,7 +407,7 @@ def ask():
         })
 
     except Exception as error:
-        app.logger.exception("Question answering failed.")
+        app.logger.exception(f"Question answering failed for session {ws.session_id}.")
         return jsonify({
             "success": False,
             "error": f"Answer generation failed: {error}",
@@ -371,8 +418,9 @@ def ask():
 
 @app.get("/history")
 def get_chat_history():
-    """Retrieve list of saved conversation sessions."""
-    sessions = load_saved_sessions()
+    """Retrieve list of saved conversation sessions for the active user."""
+    ws = get_workspace()
+    sessions = ws.load_saved_sessions()
     summary = [
         {
             "id": s["id"],
@@ -389,7 +437,8 @@ def get_chat_history():
 @app.get("/history/<session_id>")
 def get_session_detail(session_id):
     """Retrieve full messages for a specific session."""
-    sessions = load_saved_sessions()
+    ws = get_workspace()
+    sessions = ws.load_saved_sessions()
     for s in sessions:
         if s["id"] == session_id:
             return jsonify({"success": True, "session": s})
@@ -398,7 +447,8 @@ def get_session_detail(session_id):
 
 @app.post("/history/save")
 def save_chat_session():
-    """Save or update a conversation session."""
+    """Save or update a conversation session for the active user."""
+    ws = get_workspace()
     data = request.get_json(silent=True) or {}
     messages = data.get("messages", [])
     if not messages:
@@ -410,10 +460,9 @@ def save_chat_session():
         first_user_msg = next((m["content"] for m in messages if m.get("role") == "user"), "Research Chat")
         title = (first_user_msg[:45] + "...") if len(first_user_msg) > 45 else first_user_msg
 
-    sessions = load_saved_sessions()
+    sessions = ws.load_saved_sessions()
     now_str = datetime.now().strftime("%b %d, %Y %I:%M %p")
 
-    # Update if existing, else prepend
     updated = False
     for i, s in enumerate(sessions):
         if s["id"] == session_id:
@@ -431,40 +480,27 @@ def save_chat_session():
             "updated_at": now_str,
         })
 
-    save_saved_sessions(sessions)
+    ws.save_saved_sessions(sessions)
     return jsonify({"success": True, "session_id": session_id, "title": title})
 
 
 @app.delete("/history/<session_id>")
 def delete_chat_session(session_id):
     """Delete a saved conversation session."""
-    sessions = load_saved_sessions()
+    ws = get_workspace()
+    sessions = ws.load_saved_sessions()
     filtered = [s for s in sessions if s["id"] != session_id]
-    save_saved_sessions(filtered)
+    ws.save_saved_sessions(filtered)
     return jsonify({"success": True, "message": "Session deleted."})
-
 
 
 @app.post("/clear")
 def clear_all():
-    global current_documents, current_chunks, current_vector_store, current_metadata, conversation_history
+    ws = get_workspace()
+    ws.clear()
+    return jsonify({"success": True, "message": "Your workspace and conversation have been cleared."})
 
-    current_documents = []
-    current_chunks = []
-    current_vector_store = None
-    current_metadata = []
-    conversation_history = []
-
-    if os.path.exists(UPLOAD_FOLDER):
-        shutil.rmtree(UPLOAD_FOLDER, ignore_errors=True)
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-    return jsonify({"success": True, "message": "All documents and conversation cleared."})
-
-
-init_workspace_from_disk()
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-

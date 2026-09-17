@@ -21,6 +21,16 @@
     chartInstances: {},
   };
 
+  // --- Client-side Session / User Isolation ---
+  function getUserId() {
+    let uid = localStorage.getItem('doc_ai_user_id');
+    if (!uid) {
+      uid = 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+      localStorage.setItem('doc_ai_user_id', uid);
+    }
+    return uid;
+  }
+
   // --- API Endpoint Resolver for Localhost & Netlify Cross-Origin ---
   function getBackendBase() {
     return localStorage.getItem('doc_ai_backend_url') || '';
@@ -28,9 +38,24 @@
 
   function apiUrl(path) {
     const base = getBackendBase();
-    if (!base) return path;
-    return base.replace(/\/+$/, '') + path;
+    const cleanPath = path.startsWith('/') ? path : '/' + path;
+    const separator = cleanPath.includes('?') ? '&' : '?';
+    const pathWithSession = cleanPath + separator + 'session_id=' + encodeURIComponent(getUserId());
+    if (!base) return pathWithSession;
+    return base.replace(/\/+$/, '') + pathWithSession;
   }
+
+  // Intercept fetch calls to always attach X-Session-ID header
+  const _origFetch = window.fetch;
+  window.fetch = function (resource, init) {
+    init = init || {};
+    const headers = new Headers(init.headers || {});
+    if (!headers.has('X-Session-ID')) {
+      headers.set('X-Session-ID', getUserId());
+    }
+    init.headers = headers;
+    return _origFetch.call(this, resource, init);
+  };
 
   // --- DOM Elements ---
   const $ = (id) => document.getElementById(id);
