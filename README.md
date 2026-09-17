@@ -54,22 +54,6 @@ A production-ready AI Document Research Assistant built with Flask, LangChain, F
 
 ---
 
-## 🚀 Quickstart
 
-### 1. Configure Environment (`.env`)
-```env
-NVIDIA_API_KEY=nvapi-your-key-here
-NVIDIA_MODEL=nvidia/nemotron-3-super-120b-a12b
-PORT=5000
-```
-
-### 2. Run the Application
-```powershell
-.\venv\Scripts\python.exe app.py
-```
-
-### 3. Open in Browser
-Open [http://localhost:5000](http://localhost:5000) in any web browser.
-- Drag and drop your PDF into the left panel.
 - Ask any question in the chat bar (or click a prompt suggestion).
 - Click any source citation badge to view the exact page and evidence passage!
