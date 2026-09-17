@@ -23,4 +23,4 @@ USER user
 ENV PORT=7860
 EXPOSE 7860
 
-CMD ["gunicorn", "-w", "1", "--threads", "4", "-b", "0.0.0.0:7860", "--timeout", "120", "app:app"]
+CMD ["sh", "-c", "gunicorn -w 1 --threads 4 -b 0.0.0.0:${PORT:-7860} --timeout 120 app:app"]
