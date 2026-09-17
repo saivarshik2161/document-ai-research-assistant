@@ -39,8 +39,6 @@
   const el = {
     html: document.documentElement,
     themeToggleBtn: $('themeToggleBtn'),
-    apiConfigBtn: $('apiConfigBtn'),
-    apiConfigLabel: $('apiConfigLabel'),
     clearAllBtn: $('clearAllBtn'),
     newChatBtn: $('newChatBtn'),
     historyBtn: $('historyBtn'),
@@ -1017,54 +1015,6 @@
       });
     }
 
-    // Backend API Server configuration for Netlify / cross-origin deployments
-    if (el.apiConfigBtn) {
-      const current = localStorage.getItem('doc_ai_backend_url') || '';
-      if (el.apiConfigLabel && current) {
-        try {
-          el.apiConfigLabel.textContent = new URL(current).hostname;
-        } catch {
-          el.apiConfigLabel.textContent = 'Connected';
-        }
-      }
-
-      el.apiConfigBtn.addEventListener('click', async () => {
-        const existing = localStorage.getItem('doc_ai_backend_url') || '';
-        const input = prompt(
-          'Backend API Server URL (for Netlify deployment):\n\n' +
-          '• If deployed on Render/Railway: enter your URL (e.g. https://my-backend.onrender.com)\n' +
-          '• If running on local server: leave blank\n\nCurrent URL:',
-          existing
-        );
-        if (input === null) return;
-        const trimmed = input.trim();
-        if (trimmed) {
-          localStorage.setItem('doc_ai_backend_url', trimmed);
-          showToast(`Connecting to ${trimmed}...`, 'info');
-          try {
-            const res = await fetch(apiUrl('/sources'));
-            const data = await res.json();
-            if (data.success) {
-              showToast('✓ Successfully connected to backend!', 'success');
-              if (el.apiConfigLabel) {
-                try { el.apiConfigLabel.textContent = new URL(trimmed).hostname; } catch { el.apiConfigLabel.textContent = 'Connected'; }
-              }
-              await loadSources();
-            } else {
-              showToast('Backend reached but returned error.', 'error');
-            }
-          } catch (err) {
-            showToast('Could not reach backend URL. Please verify server is live and CORS is enabled.', 'error');
-          }
-        } else {
-          localStorage.removeItem('doc_ai_backend_url');
-          if (el.apiConfigLabel) el.apiConfigLabel.textContent = 'Backend';
-          showToast('Reset to default local / proxy backend.', 'info');
-          await loadSources();
-        }
-      });
-    }
-
     // New Chat
     if (el.newChatBtn) {
       el.newChatBtn.addEventListener('click', startNewChat);
@@ -1218,12 +1168,6 @@
     initEventListeners();
     loadSources();
     updateHistoryCount();
-
-    if (window.location.hostname.includes('netlify') && !getBackendBase()) {
-      setTimeout(() => {
-        showToast('💡 Netlify hosts the frontend. Click "⚙️ Backend" above to connect your live Python server URL!', 'info');
-      }, 1200);
-    }
   }
 
   if (document.readyState === 'loading') {
