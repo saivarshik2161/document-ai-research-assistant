@@ -461,8 +461,9 @@ def clear_all():
     return jsonify({"success": True, "message": "All documents and conversation cleared."})
 
 
+init_workspace_from_disk()
+
 if __name__ == "__main__":
-    init_workspace_from_disk()
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
 
