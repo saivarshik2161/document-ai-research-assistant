@@ -464,6 +464,16 @@
         method: 'POST',
         body: formData,
       });
+
+      if (!res.ok) {
+        if (window.location.hostname.includes('netlify') && !getBackendBase()) {
+          el.uploadStatus.classList.add('is-hidden');
+          el.progressFill.style.width = '0%';
+          showToast('Netlify only hosts the frontend UI. Click "⚙️ Backend" in the top bar to connect your Python server URL!', 'error');
+          return;
+        }
+      }
+
       const data = await res.json();
 
       el.progressFill.style.width = '100%';
@@ -485,7 +495,11 @@
     } catch (err) {
       el.uploadStatus.classList.add('is-hidden');
       el.progressFill.style.width = '0%';
-      showToast('Failed to upload and index document.', 'error');
+      if (window.location.hostname.includes('netlify') && !getBackendBase()) {
+        showToast('Netlify only hosts the frontend UI. Click "⚙️ Backend" in the top bar to connect your Python server URL!', 'error');
+      } else {
+        showToast('Failed to upload document. Please ensure your Python backend server is running.', 'error');
+      }
     } finally {
       el.fileInput.value = '';
     }
@@ -746,10 +760,14 @@
         showToast(errorMsg, 'error');
       }
     } catch (err) {
+      const isNetlifyWithoutBackend = window.location.hostname.includes('netlify') && !getBackendBase();
+      const errText = isNetlifyWithoutBackend
+        ? '⚠️ Netlify hosts the frontend UI only. The Python AI backend needs to be connected. Click "⚙️ Backend" in the navigation bar to enter your server URL (e.g. from Render.com).'
+        : '⚠️ Server connection error. Please ensure your Python backend server is running.';
       assistantBubble.querySelector('.msg-bubble').innerHTML = `
-        <p style="color: var(--danger);">⚠️ Server or network connection error. Please try asking again.</p>
+        <p style="color: var(--danger); font-weight: 500;">${errText}</p>
       `;
-      showToast('Network error while asking question.', 'error');
+      showToast(errText, 'error');
     } finally {
       state.isQuerying = false;
       updateSendButtonState();
@@ -1200,6 +1218,12 @@
     initEventListeners();
     loadSources();
     updateHistoryCount();
+
+    if (window.location.hostname.includes('netlify') && !getBackendBase()) {
+      setTimeout(() => {
+        showToast('💡 Netlify hosts the frontend. Click "⚙️ Backend" above to connect your live Python server URL!', 'info');
+      }, 1200);
+    }
   }
 
   if (document.readyState === 'loading') {
