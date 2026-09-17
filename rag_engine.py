@@ -632,6 +632,15 @@ def answer_question(
 ) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, str]]]:
     """Answer questions from documents and external web sources with verified citations."""
     conversation_history = conversation_history or []
+    if vector_store is None:
+        return (
+            "⚠️ **No document uploaded yet.**\n\n"
+            "Please upload a document (PDF, Word, or Text file) using the **Upload Document** button "
+            "or drag-and-drop zone in the left panel to begin your research!",
+            [],
+            [],
+        )
+
     sources: List[Dict[str, Any]] = []
     context_parts: List[str] = []
 

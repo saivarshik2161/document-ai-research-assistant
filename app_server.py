@@ -386,6 +386,22 @@ def ask():
     if not question:
         return jsonify({"success": False, "error": "Please enter a question."}), 400
 
+    if not ws.documents or ws.vector_store is None:
+        no_doc_msg = (
+            "⚠️ **No document uploaded yet.**\n\n"
+            "Please upload a document (PDF, Word, or Text file) using the **Upload Document** button "
+            "or drag-and-drop zone in the left panel to begin your research!"
+        )
+        ws.conversation_history.append({"role": "user", "content": question})
+        ws.conversation_history.append({"role": "assistant", "content": no_doc_msg})
+        return jsonify({
+            "success": True,
+            "answer": no_doc_msg,
+            "sources": [],
+            "external_sources": [],
+            "no_documents": True,
+        })
+
     try:
         answer, sources, external_sources = answer_question(
             vector_store=ws.vector_store,

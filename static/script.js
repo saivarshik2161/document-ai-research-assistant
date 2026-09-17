@@ -164,7 +164,8 @@
   function showToast(message, type = 'info') {
     if (!el.toastContainer) return;
     const toast = document.createElement('div');
-    toast.className = `toast ${type === 'error' ? 'toast--error' : type === 'success' ? 'toast--success' : ''}`;
+    const typeClass = type === 'error' ? 'toast--error' : type === 'success' ? 'toast--success' : type === 'warning' ? 'toast--warning' : '';
+    toast.className = `toast ${typeClass}`.trim();
     toast.textContent = message;
     el.toastContainer.appendChild(toast);
     setTimeout(() => {
@@ -172,6 +173,13 @@
       toast.style.transition = 'opacity 0.3s ease';
       setTimeout(() => toast.remove(), 300);
     }, 4000);
+  }
+
+  function highlightUploadArea() {
+    const target = el.dropzone || el.triggerUploadBtn;
+    if (!target) return;
+    target.classList.add('dropzone-highlight');
+    setTimeout(() => target.classList.remove('dropzone-highlight'), 2500);
   }
 
   // --- Safe Escaping & Markdown / Math / Chart Parser ---
@@ -760,6 +768,10 @@
       const data = await res.json();
 
       if (data.success) {
+        if (data.no_documents) {
+          showToast('No document uploaded yet. Please upload a document first.', 'warning');
+          highlightUploadArea();
+        }
         populateAssistantAnswer(
           assistantBubble,
           data.answer,
