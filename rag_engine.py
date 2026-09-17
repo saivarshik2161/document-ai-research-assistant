@@ -1,6 +1,21 @@
+import os
+
+# Crucial memory optimizations for low-RAM cloud instances (keeps memory well under 512MB)
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["MALLOC_ARENA_MAX"] = "2"
+
+try:
+    import torch
+    torch.set_num_threads(1)
+except Exception:
+    pass
+
 from functools import lru_cache
 from io import BytesIO
-import os
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
