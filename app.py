@@ -21,6 +21,7 @@ from rag_engine import (
 )
 
 app = Flask(__name__)
+application = app  # WSGI alias
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB upload limit
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "uploads")
