@@ -1,13 +1,3 @@
----
-title: Document AI Research Assistant
-emoji: 📑
-colorFrom: indigo
-colorTo: blue
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Document AI — Research Assistant
 
 A production-ready AI Document Research Assistant built with Flask, LangChain, FAISS vector search, local HuggingFace embeddings, and NVIDIA Nemotron 3 Super reasoning model.
